@@ -156,6 +156,18 @@ class InvalidParamsForSM(exceptions.InvalidInput):
     message = _("Please provide parameters for substitution mappings")
 
 
+class InvalidKubernetesScalingPolicyNumber(exceptions.InvalidInput):
+    message = _("Please provide only one Scaling policy")
+
+
+class InvalidKubernetesNetworkNumber(exceptions.InvalidInput):
+    message = _("Please provide one network for all vdus")
+
+
+class InvalidKubernetesInputParameter(exceptions.InvalidInput):
+    message = _("Found unsupported keys for %(found_keys)s ")
+
+
 def _validate_service_type_list(data, valid_values=None):
     if not isinstance(data, list):
         msg = _("invalid data format for service list: '%s'") % data
@@ -179,6 +191,7 @@ def _validate_service_type_list(data, valid_values=None):
 
 attr.validators['type:service_type_list'] = _validate_service_type_list
 
+NAME_MAX_LEN = 255
 
 RESOURCE_ATTRIBUTE_MAP = {
 
@@ -200,7 +213,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         'name': {
             'allow_post': True,
             'allow_put': True,
-            'validate': {'type:string': None},
+            'validate': {'type:string': NAME_MAX_LEN},
             'is_visible': True,
         },
         'description': {
@@ -276,7 +289,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         'name': {
             'allow_post': True,
             'allow_put': True,
-            'validate': {'type:string': None},
+            'validate': {'type:string': NAME_MAX_LEN},
             'is_visible': True,
         },
         'description': {

@@ -77,31 +77,61 @@ tosca-vnffgd-sample.yaml>`_.
       policy:
         type: ACL
         criteria:
-        - network_src_port_id: 640dfd77-c92b-45a3-b8fc-22712de480e1
-          destination_port_range: 80-1024
-          ip_proto: 6
-          ip_dst_prefix: 192.168.1.2/24
-        - network_src_port_id: 640dfd77-c92b-45a3-b8fc-22712de480eda
-          destination_port_range: 80-1024
-          ip_proto: 6
-          ip_dst_prefix: 192.168.2.2/24
+          - name: block_tcp
+            classifier:
+              network_src_port_id: 640dfd77-c92b-45a3-b8fc-22712de480e1
+              destination_port_range: 80-1024
+              ip_proto: 6
+              ip_dst_prefix: 192.168.1.2/24
+          - name: block_udp
+            classifier:
+              network_src_port_id: 640dfd77-c92b-45a3-b8fc-22712de480eda
+              destination_port_range: 80-1024
+              ip_proto: 17
+              ip_dst_prefix: 192.168.2.2/24
 
-You can get network_src_port_id and IP destination address through
-OpenStack commands like bellow:
+In above example, VNFFG will have 2 flow classifier. List flow classifiers
+are defined in list of criteria.
+
+You can get network_src_port_id, network_dest_port_id and destination IP
+address through OpenStack commands like bellow:
 
 .. code-block:: console
 
-   client_ip=$(openstack server list | grep http_client | \
-    grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+   client_ip=$(openstack server list | grep http_client | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 
    network_source_port_id=$(openstack port list | grep $client_ip | awk '{print $2}')
 
-   ip_dst=$(openstack server list | grep http_server | \
-    grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+   ip_dst=$(openstack server list | grep http_server | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 
+   network_dest_port_id=$(openstack port list | grep $ip_dst | awk '{print $2}')
 
 This is required due to a limitation of Neutron networking-sfc and only
 applies to an OpenStack VIM.
+
+Two "network_dst_port_id" and "ip_dst_prefix" parameters must be set when you
+want to create VNFFG with "symmetrical" feature. If you want to create VNFFG
+without "symmetrical", you can ommit "network_dst_port_id" and "ip_dst_prefix".
+
+.. code-block:: yaml
+
+    policy:
+        type: ACL
+        criteria:
+        - network_src_port_id: 640dfd77-c92b-45a3-b8fc-22712de480e1
+          network_dst_port_id: ea206bba-7083-4364-a9f1-c0b7fdf61b6e
+          destination_port_range: 80-1024
+          ip_proto: 6
+          ip_dst_prefix: 192.168.1.2/24
+
+You can use the sample VNFFGD template for symmetrical feature (in port chain)
+such as this `link <https://github.com/openstack/tacker/tree/master/samples/
+tosca-templates/vnffgd/tosca-vnffgd-symmetrical-sample.yaml>`_.
+
+The symmetrical argument is used to indicate if reverse traffic should also
+flow through the path.  This creates an extra classifier to ensure return
+traffic flows through the chain in a reverse path, otherwise this traffic
+routed normally and does not enter the VNFFG.
 
 Tacker provides the following CLI to create a VNFFGD:
 
@@ -135,31 +165,30 @@ Tacker provides the following CLI to create VNFFG from VNFFGD:
 
 .. code-block:: console
 
-   tacker vnffg-create --vnffgd-name <vnffgd-name> \
-          --vnf-mapping <vnf-mapping> --symmetrical <boolean> <vnffg-name>
+   tacker vnffg-create --vnffgd-name <vnffgd-name> --vnf-mapping <vnf-mapping> --symmetrical <vnffg-name>
 
 or you can create directly VNFFG from vnffgd template without initiating
 VNFFGD.
 
 .. code-block:: console
 
-   tacker vnffg-create --vnffgd-template <vnffgd-template> \
-      --vnf-mapping <vnf-mapping> --symmetrical <boolean> <vnffg-name>
+   tacker vnffg-create --vnffgd-template <vnffgd-template> --vnf-mapping <vnf-mapping> \
+   --symmetrical <vnffg-name>
 
 If you use a parameterized vnffg template:
 
 .. code-block:: console
 
-   tacker vnffg-create --vnffgd-name <vnffgd-name> \
-      --param-file <param-file> --vnf-mapping <vnf-mapping> \
-      --symmetrical <boolean> <vnffg-name>
+   tacker vnffg-create --vnffgd-name <vnffgd-name> --param-file <param-file> --vnf-mapping <vnf-mapping> \
+   --symmetrical <vnffg-name>
 
 Here,
 
 * vnffgd-name - VNFFGD to use to instantiate this VNFFG
 * param-file  - Parameter file in Yaml.
 * vnf-mapping - Allows a list of logical VNFD to VNF instance mapping
-* symmetrical - True/False
+* symmetrical - If --symmetrical is present, symmetrical is True
+  (default: False)
 
 VNF Mapping is used to declare which exact VNF instance to be used for
 each VNF in the Forwarding Path. The following command would list VNFs
@@ -178,22 +207,12 @@ to the desired VNF instance:
    +--------------------------------------+------+---------------------------+--------+--------------------------------------+--------------------------------------+
 
    tacker vnffg-create --vnffgd-name myvnffgd --vnf-mapping \
-      VNFD1:'91e32c20-6d1f-47a4-9ba7-08f5e5effe07',VNFD2:'7168062e-9fa1-4203-8cb7-f5c99ff3ee1b' myvnffg
+   VNFD1:'91e32c20-6d1f-47a4-9ba7-08f5e5effe07',VNFD2:'7168062e-9fa1-4203-8cb7-f5c99ff3ee1b' --symmetrical myvnffg
 
 Alternatively, if no vnf-mapping is provided then Tacker VNFFG will attempt
 to search for VNF instances derived from the given VNFDs in the VNFFGD.  If
 multiple VNF instances exist for a given VNFD, the VNF instance chosen to be
 used in the VNFFG is done at random.
-
-The symmetrical argument is used to indicate if reverse traffic should also
-flow through the path.  This creates an extra classifier to ensure return
-traffic flows through the chain in a reverse path, otherwise this traffic
-routed normally and does not enter the VNFFG.
-
-.. note::
-
-   Enabling symmetrical is not currently supported by the OpenStack VIM
-   driver
 
 Parameters for VNFFGD template
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -242,6 +261,173 @@ sub-components for a rendered VNFFG:
    tacker classifier-list
    tacker classifier-show <classifier id>
 
+Updating the VNFFG
+~~~~~~~~~~~~~~~~~~
+
+To update an already created VNFFG template the user needs to locate the VNFFG
+which wants to update. To do so the following command is getting executed:
+
+Using the below command query the list of existing VNFFG templates.
+
+.. code-block:: console
+
+    tacker vnffg-list
+
+    +--------------------+---------+-------+-------------------------------------+
+    |    id              | name   | status | vnffgd_id                           |
+    +--------------------+-----------------+-------------------------------------+
+    | f4438511-e33d-43df-|        |        |                                     |
+    | 95d9-0199253db72e  | myvnffg| ACTIVE | bd7829bf-85de-4f3b-960a-8482028bfb34|
+    +--------------------+---------+-------+-------------+--------+--------------+
+
+
+After the user located the VNFFG the subsequent action is to update it.
+Based on the appropriate choice, update VNFFG template.
+Currently two choices are supported for the update of an existing VNFFG.
+The first choice is the use of the vnf-mapping parameter.
+The user needs to use a VNF which is actually derived from the VNFD which
+is going to be used in the vnf-mapping parameter.
+If the user is not sure which VNF was used for the mapping during the time
+of the VNFFG creation he can execute:
+
+Execute the below command to query the VNF that was used in mapping at the time
+of VNFFG creation.
+
+.. code-block:: console
+
+   tacker vnffg-show myvnffg
+
+After user determined which VNF is used and which VNF is going to be used
+in the update procedure he can execute:
+
+To update the VNF mappings to VNFFG, execute the below command
+
+.. code-block:: console
+
+   tacker vnffg-update --vnf-mapping VNFD1:vnf1,VNFD2:vnf2 myvnffg
+
+   Updated vnffg: myvnffg
+
+The second choice is the use of the vnffgd-template parameter.
+The aforementioned parameter provides the ability to use a vnffgd formated yaml
+template which contains all the elements and their parameters that Tacker is
+going to apply to its ecosystem.
+
+Below there is an example usage of updating an existing VNFFG:
+
+Assuming that the existing VNFFG in the system that we want to update is
+derived from the following VNFFGD template.
+
+.. code-block:: yaml
+
+   tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+   description: Sample VNFFG template
+
+   topology_template:
+     description: Sample VNFFG template
+
+     node_templates:
+
+       Forwarding_path1:
+         type: tosca.nodes.nfv.FP.TackerV2
+         description: creates path (CP1)
+         properties:
+           id: 51
+           policy:
+             type: ACL
+             criteria:
+               - name: block_udp
+                 classifier:
+                   destination_port_range: 80-1024
+                   ip_proto: 17
+           path:
+             - forwarder: VNFD3
+               capability: CP1
+
+     groups:
+       VNFFG1:
+         type: tosca.groups.nfv.VNFFG
+         description: UDP to Corporate Net
+         properties:
+           vendor: tacker
+           version: 1.0
+           number_of_endpoints: 1
+           dependent_virtual_link: [VL1]
+           connection_point: [CP1]
+           constituent_vnfs: [VNFD3]
+         members: [Forwarding_path1]
+
+By using the below VNFFGD template we can update the exisitng VNFFG.
+
+.. code-block:: yaml
+
+   tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+   description: Sample VNFFG template
+
+   topology_template:
+     description: Sample VNFFG template
+
+     node_templates:
+
+       Forwarding_path2:
+         type: tosca.nodes.nfv.FP.TackerV2
+         description: creates path (CP1->CP2)
+         properties:
+           id: 52
+           policy:
+             type: ACL
+             criteria:
+               - name: block_tcp
+                 classifier:
+                   network_src_port_id: 640dfd77-c92b-45a3-b8fc-22712de480e1
+                   destination_port_range: 22-28
+                   ip_proto: 6
+                   ip_dst_prefix: 192.168.1.2/24
+           path:
+             - forwarder: VNFD1
+               capability: CP1
+             - forwarder: VNFD2
+               capability: CP2
+
+     groups:
+       VNFFG1:
+         type: tosca.groups.nfv.VNFFG
+         description: SSH to Corporate Net
+         properties:
+           vendor: tacker
+           version: 1.0
+           number_of_endpoints: 2
+           dependent_virtual_link: [VL1,VL2]
+           connection_point: [CP1,CP2]
+           constituent_vnfs: [VNFD1,VNFD2]
+         members: [Forwarding_path2]
+
+The above template informs Tacker to update the current classifier,NFP and
+path (chain) with the ones that are described in that template. After the completion
+of the update procedure the new NFP will be named 'Forwarding_path2' with an id of
+'52',the classifier in that NFP will be named 'block_tcp' and will have the corresponding
+match criteria and the updated chain will be consisted by two NVFs which are derived from
+VNFD1,VNFD2 VNFDs.
+
+To update the existing VNFFG through the vnffgd-template parameter, execute the
+below command:
+
+.. code-block:: console
+
+   tacker vnffg-update --vnffgd-template myvnffgd.yaml myvnffg
+
+   Updated vnffg: myvnffg
+
+Of course the above update VNFFG's choices can be combined in a single command.
+
+.. code-block:: console
+
+   tacker vnffg-update --vnf-mapping VNFD1:vnf1,VNFD2:vnf2 --vnffgd-template myvnffgd.yaml myvnffg
+
+   Updated vnffg: myvnffg
+
 Known Issues and Limitations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -250,7 +436,7 @@ Known Issues and Limitations
 - Matching on criteria with postfix 'name' does not work, for example
   'network_name'
 - NSH attributes not yet supported
-- Symmetrical is not supported by driver yet
+- n-sfc Bug: https://bugs.launchpad.net/networking-sfc/+bug/1746686
 
 .. _VNF1: https://github.com/openstack/tacker/blob/master/samples/tosca-templates/vnffgd/tosca-vnffg-vnfd1.yaml
 .. _VNF2: https://github.com/openstack/tacker/blob/master/samples/tosca-templates/vnffgd/tosca-vnffg-vnfd2.yaml

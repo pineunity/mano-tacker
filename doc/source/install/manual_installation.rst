@@ -25,8 +25,13 @@ Pre-requisites
 ==============
 
 1). Ensure that OpenStack components Keystone, Mistral, Barbican and
-Horizon are installed. Refer https://docs.openstack.org/latest/projects.html
-for installation of these OpenStack projects on different Operating Systems.
+Horizon are installed. Refer the list below for installation of
+these OpenStack projects on different Operating Systems.
+
+* https://docs.openstack.org/keystone/latest/install/index.html
+* https://docs.openstack.org/mistral/latest/install/index.html
+* https://docs.openstack.org/barbican/latest/install/install.html
+* https://docs.openstack.org/horizon/latest/install/index.html
 
 2). one admin-openrc.sh file is generated. one sample admin-openrc.sh file
 is like the below:
@@ -196,7 +201,7 @@ If you are using keystone v2 then,
    state_path = /var/lib/tacker
    ...
 
-   [nfvo]
+   [nfvo_vim]
    vim_drivers = openstack
 
    [keystone_authtoken]
@@ -217,7 +222,7 @@ If you are using keystone v2 then,
    ...
 
    [database]
-   connection = mysql://tacker:<TACKERDB_PASSWORD>@<MYSQL_IP>:3306/tacker?charset=utf8
+   connection = mysql+pymysql://tacker:<TACKERDB_PASSWORD>@<MYSQL_IP>:3306/tacker?charset=utf8
    ...
 
    [tacker]

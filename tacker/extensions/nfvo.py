@@ -59,6 +59,10 @@ class VimKeyNotFoundException(exceptions.TackerException):
     message = _("Unable to find key file for VIM %(vim_id)s")
 
 
+class VimEncryptKeyError(exceptions.TackerException):
+    message = _("Barbican must be enabled for VIM %(vim_id)s")
+
+
 class VimUnsupportedResourceTypeException(exceptions.TackerException):
     message = _("Resource type %(type)s is unsupported by VIM")
 
@@ -236,6 +240,14 @@ class ClassifierNotFoundException(exceptions.NotFound):
     message = _('Classifier %(classifier_id)s could not be found')
 
 
+class VnfMappingNotFoundException(exceptions.NotFound):
+    message = _('VNF mapping not found/defined')
+
+
+class VnfMappingNotValidException(exceptions.TackerException):
+    message = _('The %(vnfd)s is not found in constituent VNFDs')
+
+
 class NSDInUse(exceptions.InUse):
     message = _('NSD %(nsd_id)s is still in use')
 
@@ -247,6 +259,20 @@ class NSInUse(exceptions.InUse):
 class NoTasksException(exceptions.TackerException):
     message = _('No tasks to run for %(action)s on %(resource)s')
 
+
+class UpdateChainException(exceptions.TackerException):
+    message = _("%(message)s")
+
+
+class UpdateClassifierException(exceptions.TackerException):
+    message = _("%(message)s")
+
+
+class UpdateVnffgException(exceptions.TackerException):
+    message = _("%(message)s")
+
+
+NAME_MAX_LEN = 255
 
 RESOURCE_ATTRIBUTE_MAP = {
 
@@ -292,7 +318,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         'name': {
             'allow_post': True,
             'allow_put': True,
-            'validate': {'type:string': None},
+            'validate': {'type:string': NAME_MAX_LEN},
             'is_visible': True,
         },
         'description': {
@@ -357,7 +383,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         'name': {
             'allow_post': True,
             'allow_put': True,
-            'validate': {'type:string': None},
+            'validate': {'type:string': NAME_MAX_LEN},
             'is_visible': True,
         },
         'description': {
@@ -408,7 +434,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         'name': {
             'allow_post': True,
             'allow_put': True,
-            'validate': {'type:string': None},
+            'validate': {'type:string': NAME_MAX_LEN},
             'is_visible': True,
         },
         'description': {
@@ -453,7 +479,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         },
         'vnffgd_template': {
             'allow_post': True,
-            'allow_put': False,
+            'allow_put': True,
             'validate': {'type:dict_or_nodata': None},
             'is_visible': True,
             'default': None,
@@ -610,6 +636,12 @@ RESOURCE_ATTRIBUTE_MAP = {
             'allow_put': False,
             'is_visible': True,
         },
+        'name': {
+            'allow_post': True,
+            'allow_put': True,
+            'validate': {'type:string': NAME_MAX_LEN},
+            'is_visible': True,
+        },
     },
 
     'nsds': {
@@ -630,7 +662,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         'name': {
             'allow_post': True,
             'allow_put': True,
-            'validate': {'type:string': None},
+            'validate': {'type:string': NAME_MAX_LEN},
             'is_visible': True,
         },
         'description': {
@@ -685,13 +717,13 @@ RESOURCE_ATTRIBUTE_MAP = {
         'name': {
             'allow_post': True,
             'allow_put': True,
-            'validate': {'type:string': None},
+            'validate': {'type:string': NAME_MAX_LEN},
             'is_visible': True,
         },
         'description': {
             'allow_post': True,
             'allow_put': True,
-            'validate': {'type:string': None},
+            'validate': {'type:string': NAME_MAX_LEN},
             'is_visible': True,
             'default': '',
         },

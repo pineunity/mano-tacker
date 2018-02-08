@@ -70,7 +70,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
 
     OPTS = [
         cfg.ListOpt(
-            'vim_drivers', default=['openstack'],
+            'vim_drivers', default=['openstack', 'kubernetes'],
             help=_('VIM driver for launching VNFs')),
         cfg.IntOpt(
             'monitor_interval', default=30,
@@ -140,24 +140,44 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
         old_auth_need_delete = False
         new_auth_created = False
         try:
-            # re-register the VIM only if there is a change in password.
+            # re-register the VIM only if there is a change in bearer_token,
+            # username, password or bearer_token.
             # auth_url of auth_cred is from vim object which
             # is not updatable. so no need to consider it
             if 'auth_cred' in update_args:
                 auth_cred = update_args['auth_cred']
-                if 'password' in auth_cred:
+                if ('username' in auth_cred) and ('password' in auth_cred)\
+                        and (auth_cred['password'] is not None):
+                    # update new username and password, remove bearer_token
+                    # if it exists in the old vim
+                    vim_obj['auth_cred']['username'] = auth_cred['username']
                     vim_obj['auth_cred']['password'] = auth_cred['password']
-                    # Notice: vim_obj may be updated in vim driver's
-                    self._vim_drivers.invoke(vim_type,
-                                             'register_vim',
-                                             context=context,
-                                             vim_obj=vim_obj)
-                    new_auth_created = True
+                    if 'bearer_token' in vim_obj['auth_cred']:
+                        vim_obj['auth_cred'].pop('bearer_token')
+                elif 'bearer_token' in auth_cred:
+                    # update bearer_token, remove username and password
+                    # if they exist in the old vim
+                    vim_obj['auth_cred']['bearer_token'] =\
+                        auth_cred['bearer_token']
+                    if ('username' in vim_obj['auth_cred']) and\
+                            ('password' in vim_obj['auth_cred']):
+                        vim_obj['auth_cred'].pop('username')
+                        vim_obj['auth_cred'].pop('password')
+                if 'ssl_ca_cert' in auth_cred:
+                    # update new ssl_ca_cert
+                    vim_obj['auth_cred']['ssl_ca_cert'] =\
+                        auth_cred['ssl_ca_cert']
+                # Notice: vim_obj may be updated in vim driver's
+                self._vim_drivers.invoke(vim_type,
+                                         'register_vim',
+                                         context=context,
+                                         vim_obj=vim_obj)
+                new_auth_created = True
 
-                    # Check whether old vim's auth need to be deleted
-                    old_key_type = old_vim_obj['auth_cred'].get('key_type')
-                    if old_key_type == 'barbican_key':
-                        old_auth_need_delete = True
+                # Check whether old vim's auth need to be deleted
+                old_key_type = old_vim_obj['auth_cred'].get('key_type')
+                if old_key_type == 'barbican_key':
+                    old_auth_need_delete = True
 
             vim_obj = super(NfvoPlugin, self).update_vim(
                 context, vim_id, vim_obj)
@@ -234,7 +254,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
         known_forwarders = set()
         for element in path:
             if element.get('forwarder') in known_forwarders:
-                if prev_element is not None and element.get('forwarder')\
+                if prev_element is not None and element.get('forwarder') \
                         != prev_element['forwarder']:
                     raise nfvo.VnffgdDuplicateForwarderException(
                         forwarder=element.get('forwarder')
@@ -303,12 +323,12 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
         nfp = super(NfvoPlugin, self).get_nfp(context,
                                               vnffg_dict['forwarding_paths'])
         sfc = super(NfvoPlugin, self).get_sfc(context, nfp['chain_id'])
-        matches = []
+        classifier_dict = dict()
+        name_match_list = []
         for classifier_id in nfp['classifier_ids']:
-            matches.append(super(NfvoPlugin, self).
-                    get_classifier(context,
-                                   classifier_id,
-                                   fields='match')['match'])
+            classifier_dict = super(NfvoPlugin, self).get_classifier(
+                context, classifier_id, fields=['name', 'match'])
+            name_match_list.append(classifier_dict)
         # grab the first VNF to check it's VIM type
         # we have already checked that all VNFs are in the same VIM
         vim_obj = self._get_vim_from_vnf(context,
@@ -319,13 +339,12 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
         driver_type = vim_obj['type']
         try:
             fc_ids = []
-            for match in matches:
+            for item in name_match_list:
                 fc_ids.append(self._vim_drivers.invoke(driver_type,
                                              'create_flow_classifier',
-                                             name=vnffg_dict['name'],
-                                             fc=match,
-                                             auth_attr=vim_obj['auth_cred'],
-                                             symmetrical=sfc['symmetrical']))
+                                             name=item['name'],
+                                             fc=item['match'],
+                                             auth_attr=vim_obj['auth_cred']))
             sfc_id = self._vim_drivers.invoke(driver_type,
                                               'create_chain',
                                               name=vnffg_dict['name'],
@@ -346,79 +365,105 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
 
     @log.log
     def update_vnffg(self, context, vnffg_id, vnffg):
-        vnffg_dict = super(NfvoPlugin, self)._update_vnffg_pre(context,
-                                                               vnffg_id)
-        new_vnffg = vnffg['vnffg']
-        LOG.debug('vnffg update: %s', vnffg)
+        vnffg_info = vnffg['vnffg']
+        # put vnffg related objects in PENDING_UPDATE status
+        vnffg_old = super(NfvoPlugin, self)._update_vnffg_status_pre(
+            context, vnffg_id)
+        name = vnffg_old['name']
+
+        # create inline vnffgd if given by user
+        if vnffg_info.get('vnffgd_template'):
+            vnffgd_name = utils.generate_resource_name(name, 'inline')
+            vnffgd = {'vnffgd': {'tenant_id': vnffg_old['tenant_id'],
+                                 'name': vnffgd_name,
+                                 'template': {
+                                     'vnffgd': vnffg_info['vnffgd_template']},
+                                 'template_source': 'inline',
+                                 'description': vnffg_old['description']}}
+            try:
+                vnffg_info['vnffgd_id'] = \
+                    self.create_vnffgd(context, vnffgd).get('id')
+            except Exception:
+                with excutils.save_and_reraise_exception():
+                    super(NfvoPlugin, self)._update_vnffg_status_post(context,
+                        vnffg_old, error=True, db_state=constants.ACTIVE)
+        try:
+
+            vnffg_dict = super(NfvoPlugin, self). \
+                _update_vnffg_pre(context, vnffg, vnffg_id, vnffg_old)
+
+        except (nfvo.VnfMappingNotFoundException,
+                nfvo.VnfMappingNotValidException):
+            with excutils.save_and_reraise_exception():
+
+                if vnffg_info.get('vnffgd_template'):
+                    super(NfvoPlugin, self).delete_vnffgd(
+                        context, vnffg_info['vnffgd_id'])
+
+                super(NfvoPlugin, self)._update_vnffg_status_post(
+                    context, vnffg_old, error=True, db_state=constants.ACTIVE)
+        except nfvo.UpdateVnffgException:
+            with excutils.save_and_reraise_exception():
+                super(NfvoPlugin, self).delete_vnffgd(context,
+                                                      vnffg_info['vnffgd_id'])
+
+                super(NfvoPlugin, self)._update_vnffg_status_post(context,
+                                                                  vnffg_old,
+                                                                  error=True)
+
         nfp = super(NfvoPlugin, self).get_nfp(context,
                                               vnffg_dict['forwarding_paths'])
         sfc = super(NfvoPlugin, self).get_sfc(context, nfp['chain_id'])
 
-        classifiers = [super(NfvoPlugin, self).
-                       get_classifier(context, classifier_id) for classifier_id
-                       in nfp['classifier_ids']]
-        template_db = self._get_resource(context, vnffg_db.VnffgTemplate,
-                                         vnffg_dict['vnffgd_id'])
-        vnf_members = self._get_vnffg_property(template_db.template,
-                                               'constituent_vnfs')
-        new_vnffg['vnf_mapping'] = super(NfvoPlugin, self)._get_vnf_mapping(
-            context, new_vnffg.get('vnf_mapping'), vnf_members)
-        template_id = vnffg_dict['vnffgd_id']
-        template_db = self._get_resource(context, vnffg_db.VnffgTemplate,
-                                         template_id)
-        # functional attributes that allow update are vnf_mapping,
-        # and symmetrical.  Therefore we need to figure out the new chain if
-        # it was updated by new vnf_mapping.  Symmetrical is handled by driver.
+        classifier_dict = dict()
+        classifier_update = []
+        classifier_delete_ids = []
+        classifier_ids = []
+        for classifier_id in nfp['classifier_ids']:
+            classifier_dict = super(NfvoPlugin, self).get_classifier(
+                context, classifier_id, fields=['id', 'name', 'match',
+                    'instance_id', 'status'])
+            if classifier_dict['status'] == constants.PENDING_DELETE:
+                classifier_delete_ids.append(
+                    classifier_dict.pop('instance_id'))
+            else:
+                classifier_ids.append(classifier_dict.pop('id'))
+                classifier_update.append(classifier_dict)
 
-        chain = super(NfvoPlugin, self)._create_port_chain(context,
-                                                           new_vnffg[
-                                                               'vnf_mapping'],
-                                                           template_db,
-                                                           nfp['name'])
-        LOG.debug('chain update: %s', chain)
-        sfc['chain'] = chain
-        sfc['symmetrical'] = new_vnffg['symmetrical']
+        # TODO(gongysh) support different vim for each vnf
         vim_obj = self._get_vim_from_vnf(context,
                                          list(vnffg_dict[
                                               'vnf_mapping'].values())[0])
         driver_type = vim_obj['type']
         try:
-            # we don't support updating the match criteria in first iteration
-            # so this is essentially a noop.  Good to keep for future use
-            # though.
-            # In addition to that the code we are adding for the multiple
-            # classifier support is also a noop and we are adding it so we
-            # do not get compilation errors. It should be changed when the
-            # update of the classifier will be supported.
-            classifier_instances = []
-            for classifier in classifiers:
-                self._vim_drivers.invoke(driver_type, 'update_flow_classifier',
-                                         fc_id=classifier['instance_id'],
-                                         fc=classifier['match'],
-                                         auth_attr=vim_obj['auth_cred'],
-                                         symmetrical=new_vnffg['symmetrical'])
-                classifier_instances.append(classifier['instance_id'])
-            self._vim_drivers.invoke(driver_type, 'update_chain',
-                                     vnfs=sfc['chain'],
-                                     fc_ids=classifier_instances,
+            fc_ids = []
+            self._vim_drivers.invoke(driver_type,
+                                     'remove_and_delete_flow_classifiers',
                                      chain_id=sfc['instance_id'],
-                                     auth_attr=vim_obj['auth_cred'],
-                                     symmetrical=new_vnffg['symmetrical'])
+                                     fc_ids=classifier_delete_ids,
+                                     auth_attr=vim_obj['auth_cred'])
+            for item in classifier_update:
+                fc_ids.append(self._vim_drivers.invoke(driver_type,
+                                         'update_flow_classifier',
+                                         chain_id=sfc['instance_id'],
+                                         fc=item,
+                                         auth_attr=vim_obj['auth_cred']))
+            n_sfc_chain_id = self._vim_drivers.invoke(
+                driver_type, 'update_chain',
+                vnfs=sfc['chain'], fc_ids=fc_ids,
+                chain_id=sfc['instance_id'], auth_attr=vim_obj['auth_cred'])
         except Exception:
             with excutils.save_and_reraise_exception():
-                vnffg_dict['status'] = constants.ERROR
-                super(NfvoPlugin, self)._update_vnffg_post(context, vnffg_id,
-                                                           constants.ERROR)
-        super(NfvoPlugin, self)._update_vnffg_post(context, vnffg_id,
-                                                   constants.ACTIVE, new_vnffg)
-        # update chain
-        super(NfvoPlugin, self)._update_sfc_post(context, sfc['id'],
-                                                 constants.ACTIVE, sfc)
-        # update classifier - this is just updating status until functional
-        # updates are supported to classifier
-        super(NfvoPlugin, self)._update_classifier_post(context,
-                                                        nfp['classifier_ids'],
-                                                        constants.ACTIVE)
+                super(NfvoPlugin, self)._update_vnffg_status_post(context,
+                                                             vnffg_dict,
+                                                             error=True)
+
+        classifiers_map = super(NfvoPlugin, self).create_classifiers_map(
+            classifier_ids, fc_ids)
+        super(NfvoPlugin, self)._update_vnffg_post(context, n_sfc_chain_id,
+                                                   classifiers_map,
+                                                   vnffg_dict)
+        super(NfvoPlugin, self)._update_vnffg_status_post(context, vnffg_dict)
         return vnffg_dict
 
     @log.log
@@ -684,7 +729,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
                 if req_val in nsd_dict['topology_template']['node_templates']:
                     param_values[vnfd_name]['substitution_mappings'][
                         res_name] = nsd_dict['topology_template'][
-                            'node_templates'][req_val]
+                        'node_templates'][req_val]
 
             param_values[vnfd_name]['substitution_mappings'][
                 'requirements'] = req_dict
@@ -787,17 +832,19 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
     def delete_ns(self, context, ns_id):
         ns = super(NfvoPlugin, self).get_ns(context, ns_id)
         vim_res = self.vim_client.get_vim(context, ns['vim_id'])
+        super(NfvoPlugin, self).delete_ns_pre(context, ns_id)
         driver_type = vim_res['vim_type']
         workflow = None
         try:
-            workflow = self._vim_drivers.invoke(
-                driver_type,
-                'prepare_and_create_workflow',
-                resource='vnf',
-                action='delete',
-                auth_dict=self.get_auth_dict(context),
-                kwargs={
-                    'ns': ns})
+            if ns['vnf_ids']:
+                workflow = self._vim_drivers.invoke(
+                    driver_type,
+                    'prepare_and_create_workflow',
+                    resource='vnf',
+                    action='delete',
+                    auth_dict=self.get_auth_dict(context),
+                    kwargs={
+                        'ns': ns})
         except nfvo.NoTasksException:
             LOG.warning("No VNF deletion task(s).")
         if workflow:
@@ -816,7 +863,6 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
                                          auth_dict=self.get_auth_dict(context))
 
                 raise ex
-        super(NfvoPlugin, self).delete_ns(context, ns_id)
 
         def _delete_ns_wait(ns_id, execution_id):
             exec_state = "RUNNING"
@@ -855,6 +901,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
                                      auth_dict=self.get_auth_dict(context))
             super(NfvoPlugin, self).delete_ns_post(context, ns_id, exec_obj,
                                                    error_reason)
+
         if workflow:
             self.spawn_n(_delete_ns_wait, ns['id'], mistral_execution.id)
         else:
