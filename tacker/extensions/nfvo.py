@@ -207,10 +207,6 @@ class NfpDuplicatePolicyCriteria(exceptions.TackerException):
     message = _('The %(first_dict)s and %(sec_dict)s are overlapped')
 
 
-class NfpPolicyNotFoundException(exceptions.NotFound):
-    message = _('Policy not found in NFP %(nfp)s')
-
-
 class NfpPolicyTypeError(exceptions.PolicyCheckError):
     message = _('Unsupported Policy Type: %(type)s')
 
@@ -785,7 +781,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         },
         'nsd_template': {
             'allow_post': True,
-            'allow_put': True,
+            'allow_put': False,
             'validate': {'type:dict_or_nodata': None},
             'is_visible': True,
             'default': None,
