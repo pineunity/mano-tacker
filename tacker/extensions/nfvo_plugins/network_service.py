@@ -52,6 +52,10 @@ class NSPluginBase(service_base.NFVPluginBase):
     def delete_ns(self, context, ns_id):
         pass
 
+    @abc.abstractmethod
+    def update_ns(self, context, ns_id, ns):
+        pass
+
 
 class NSDNotFound(exceptions.NotFound):
     message = _('NSD %(nsd_id)s could not be found')

@@ -785,7 +785,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         },
         'nsd_template': {
             'allow_post': True,
-            'allow_put': False,
+            'allow_put': True,
             'validate': {'type:dict_or_nodata': None},
             'is_visible': True,
             'default': None,
