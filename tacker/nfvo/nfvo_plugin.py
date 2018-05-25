@@ -907,3 +907,106 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
             super(NfvoPlugin, self).delete_ns_post(
                 context, ns_id, None, None)
         return ns['id']
+
+    @log.log
+    def update_ns(self, context, vnffg_id, ns):
+        ns_info = ns['vnffg']
+        # put vnffg related objects in PENDING_UPDATE status
+        vnffg_old = super(NfvoPlugin, self)._update_ns_status_pre(
+            context, vnffg_id)
+        name = vnffg_old['name']
+
+        # create inline vnffgd if given by user
+        if ns_info.get('vnffgd_template'):
+            vnffgd_name = utils.generate_resource_name(name, 'inline')
+            vnffgd = {'vnffgd': {'tenant_id': vnffg_old['tenant_id'],
+                                 'name': vnffgd_name,
+                                 'template': {
+                                     'vnffgd': ns_info['vnffgd_template']},
+                                 'template_source': 'inline',
+                                 'description': vnffg_old['description']}}
+            try:
+                vnffg_info['vnffgd_id'] = \
+                    self.create_vnffgd(context, vnffgd).get('id')
+            except Exception:
+                with excutils.save_and_reraise_exception():
+                    super(NfvoPlugin, self)._update_vnffg_status_post(context,
+                                                                      vnffg_old, error=True, db_state=constants.ACTIVE)
+        try:
+
+            vnffg_dict = super(NfvoPlugin, self). \
+                _update_vnffg_pre(context, vnffg, vnffg_id, vnffg_old)
+
+        except (nfvo.VnfMappingNotFoundException,
+                nfvo.VnfMappingNotValidException):
+            with excutils.save_and_reraise_exception():
+
+                if vnffg_info.get('vnffgd_template'):
+                    super(NfvoPlugin, self).delete_vnffgd(
+                        context, vnffg_info['vnffgd_id'])
+
+                super(NfvoPlugin, self)._update_vnffg_status_post(
+                    context, vnffg_old, error=True, db_state=constants.ACTIVE)
+        except nfvo.UpdateVnffgException:
+            with excutils.save_and_reraise_exception():
+                super(NfvoPlugin, self).delete_vnffgd(context,
+                                                      vnffg_info['vnffgd_id'])
+
+                super(NfvoPlugin, self)._update_vnffg_status_post(context,
+                                                                  vnffg_old,
+                                                                  error=True)
+
+        nfp = super(NfvoPlugin, self).get_nfp(context,
+                                              vnffg_dict['forwarding_paths'])
+        sfc = super(NfvoPlugin, self).get_sfc(context, nfp['chain_id'])
+
+        classifier_dict = dict()
+        classifier_update = []
+        classifier_delete_ids = []
+        classifier_ids = []
+        for classifier_id in nfp['classifier_ids']:
+            classifier_dict = super(NfvoPlugin, self).get_classifier(
+                context, classifier_id, fields=['id', 'name', 'match',
+                                                'instance_id', 'status'])
+            if classifier_dict['status'] == constants.PENDING_DELETE:
+                classifier_delete_ids.append(
+                    classifier_dict.pop('instance_id'))
+            else:
+                classifier_ids.append(classifier_dict.pop('id'))
+                classifier_update.append(classifier_dict)
+
+        # TODO(gongysh) support different vim for each vnf
+        vim_obj = self._get_vim_from_vnf(context,
+                                         list(vnffg_dict[
+                                                  'vnf_mapping'].values())[0])
+        driver_type = vim_obj['type']
+        try:
+            fc_ids = []
+            self._vim_drivers.invoke(driver_type,
+                                     'remove_and_delete_flow_classifiers',
+                                     chain_id=sfc['instance_id'],
+                                     fc_ids=classifier_delete_ids,
+                                     auth_attr=vim_obj['auth_cred'])
+            for item in classifier_update:
+                fc_ids.append(self._vim_drivers.invoke(driver_type,
+                                                       'update_flow_classifier',
+                                                       chain_id=sfc['instance_id'],
+                                                       fc=item,
+                                                       auth_attr=vim_obj['auth_cred']))
+            n_sfc_chain_id = self._vim_drivers.invoke(
+                driver_type, 'update_chain',
+                vnfs=sfc['chain'], fc_ids=fc_ids,
+                chain_id=sfc['instance_id'], auth_attr=vim_obj['auth_cred'])
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                super(NfvoPlugin, self)._update_vnffg_status_post(context,
+                                                                  vnffg_dict,
+                                                                  error=True)
+
+        classifiers_map = super(NfvoPlugin, self).create_classifiers_map(
+            classifier_ids, fc_ids)
+        super(NfvoPlugin, self)._update_vnffg_post(context, n_sfc_chain_id,
+                                                   classifiers_map,
+                                                   vnffg_dict)
+        super(NfvoPlugin, self)._update_vnffg_status_post(context, vnffg_dict)
+        return vnffg_dict

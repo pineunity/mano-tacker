@@ -387,3 +387,5 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
         return self._get_collection(context, NS,
                                     self._make_ns_dict,
                                     filters=filters, fields=fields)
+
+    def update_ns_pre(self, context, ns, ns_id, ns_old):
