@@ -909,25 +909,25 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
         return ns['id']
 
     @log.log
-    def update_ns(self, context, vnffg_id, ns):
-        ns_info = ns['vnffg']
+    def update_ns(self, context, ns_id, ns):
+        ns_info = ns['ns']
         # put vnffg related objects in PENDING_UPDATE status
-        vnffg_old = super(NfvoPlugin, self)._update_ns_status_pre(
-            context, vnffg_id)
-        name = vnffg_old['name']
+        ns_old = super(NfvoPlugin, self)._update_ns_pre(
+            context, ns_id)
+        name = ns_old['name']
 
         # create inline vnffgd if given by user
-        if ns_info.get('vnffgd_template'):
-            vnffgd_name = utils.generate_resource_name(name, 'inline')
-            vnffgd = {'vnffgd': {'tenant_id': vnffg_old['tenant_id'],
-                                 'name': vnffgd_name,
+        if ns_info.get('ns_template'):
+            ns_name = utils.generate_resource_name(name, 'inline')
+            nsd = {'nsd': {'tenant_id': ns_old['tenant_id'],
+                                 'name': ns_name,
                                  'template': {
-                                     'vnffgd': ns_info['vnffgd_template']},
+                                     'nsd': ns_info['nsd_template']},
                                  'template_source': 'inline',
-                                 'description': vnffg_old['description']}}
+                                 'description': ns_old['description']}}
             try:
-                vnffg_info['vnffgd_id'] = \
-                    self.create_vnffgd(context, vnffgd).get('id')
+                ns_info['nsd_id'] = \
+                    self.create_vnffgd(context, nsd).get('id')
             except Exception:
                 with excutils.save_and_reraise_exception():
                     super(NfvoPlugin, self)._update_vnffg_status_post(context,
