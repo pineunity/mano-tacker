@@ -911,102 +911,142 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
     @log.log
     def update_ns(self, context, ns_id, ns):
         ns_info = ns['ns']
-        # put vnffg related objects in PENDING_UPDATE status
-        ns_old = super(NfvoPlugin, self)._update_ns_pre(
-            context, ns_id)
+        ns_old = super(NfvoPlugin, self).get_ns(context, ns_id)
         name = ns_old['name']
-
         # create inline vnffgd if given by user
         if ns_info.get('ns_template'):
             ns_name = utils.generate_resource_name(name, 'inline')
             nsd = {'nsd': {'tenant_id': ns_old['tenant_id'],
-                                 'name': ns_name,
-                                 'template': {
-                                     'nsd': ns_info['nsd_template']},
-                                 'template_source': 'inline',
-                                 'description': ns_old['description']}}
+                           'name': ns_name,
+                           'template': {
+                               'nsd': ns_info['nsd_template']},
+                           'template_source': 'inline',
+                           'description': ns_old['description']}}
             try:
                 ns_info['nsd_id'] = \
-                    self.create_vnffgd(context, nsd).get('id')
+                    self.create_nsd(context, nsd).get('id')
             except Exception:
                 with excutils.save_and_reraise_exception():
-                    super(NfvoPlugin, self)._update_vnffg_status_post(context,
-                                                                      vnffg_old, error=True, db_state=constants.ACTIVE)
-        try:
+                    super(NfvoPlugin, self)._update_ns_status(context, ns_id, constants.ACTIVE)
 
-            vnffg_dict = super(NfvoPlugin, self). \
-                _update_vnffg_pre(context, vnffg, vnffg_id, vnffg_old)
+        nsd = self.get_nsd(context, ns_info['nsd_id'])
+        nsd_dict = yaml.safe_load(nsd['attributes']['nsd'])
+        vnfm_plugin = manager.TackerManager.get_service_plugins()['VNFM']
+        onboarded_vnfds = vnfm_plugin.get_vnfds(context, [])
+        region_name = ns.setdefault('placement_attr', {}).get(
+            'region_name', None)
+        vim_res = self.vim_client.get_vim(context, ns['ns']['vim_id'],
+                                          region_name)
+        driver_type = vim_res['vim_type']
+        if not ns['ns']['vim_id']:
+            ns['ns']['vim_id'] = vim_res['vim_id']
 
-        except (nfvo.VnfMappingNotFoundException,
-                nfvo.VnfMappingNotValidException):
-            with excutils.save_and_reraise_exception():
+        # Step-1
+        param_values = ns['ns']['attributes'].get('param_values', {})
+        if 'get_input' in str(nsd_dict):
+            self._process_parameterized_input(ns['ns']['attributes'],
+                                              nsd_dict)
 
-                if vnffg_info.get('vnffgd_template'):
-                    super(NfvoPlugin, self).delete_vnffgd(
-                        context, vnffg_info['vnffgd_id'])
-
-                super(NfvoPlugin, self)._update_vnffg_status_post(
-                    context, vnffg_old, error=True, db_state=constants.ACTIVE)
-        except nfvo.UpdateVnffgException:
-            with excutils.save_and_reraise_exception():
-                super(NfvoPlugin, self).delete_vnffgd(context,
-                                                      vnffg_info['vnffgd_id'])
-
-                super(NfvoPlugin, self)._update_vnffg_status_post(context,
-                                                                  vnffg_old,
-                                                                  error=True)
-
-        nfp = super(NfvoPlugin, self).get_nfp(context,
-                                              vnffg_dict['forwarding_paths'])
-        sfc = super(NfvoPlugin, self).get_sfc(context, nfp['chain_id'])
-
-        classifier_dict = dict()
-        classifier_update = []
-        classifier_delete_ids = []
-        classifier_ids = []
-        for classifier_id in nfp['classifier_ids']:
-            classifier_dict = super(NfvoPlugin, self).get_classifier(
-                context, classifier_id, fields=['id', 'name', 'match',
-                                                'instance_id', 'status'])
-            if classifier_dict['status'] == constants.PENDING_DELETE:
-                classifier_delete_ids.append(
-                    classifier_dict.pop('instance_id'))
+        # Step-2
+        vnfds = nsd['vnfds']
+        # vnfd_dict is used while generating workflow
+        vnfd_dict = dict()
+        for node_name, node_val in \
+                (nsd_dict['topology_template']['node_templates']).items():
+            if node_val.get('type') not in vnfds.keys():
+                continue
+            vnfd_name = vnfds[node_val.get('type')]
+            if not vnfd_dict.get(vnfd_name):
+                vnfd_dict[vnfd_name] = {
+                    'id': self._get_vnfd_id(vnfd_name, onboarded_vnfds),
+                    'instances': [node_name]
+                }
             else:
-                classifier_ids.append(classifier_dict.pop('id'))
-                classifier_update.append(classifier_dict)
+                vnfd_dict[vnfd_name]['instances'].append(node_name)
+            if not node_val.get('requirements'):
+                continue
+            if not param_values.get(vnfd_name):
+                param_values[vnfd_name] = {}
+            param_values[vnfd_name]['substitution_mappings'] = dict()
+            req_dict = dict()
+            requirements = node_val.get('requirements')
+            for requirement in requirements:
+                req_name = list(requirement.keys())[0]
+                req_val = list(requirement.values())[0]
+                res_name = req_val + ns['ns']['nsd_id'][:11]
+                req_dict[req_name] = res_name
+                if req_val in nsd_dict['topology_template']['node_templates']:
+                    param_values[vnfd_name]['substitution_mappings'][
+                        res_name] = nsd_dict['topology_template'][
+                        'node_templates'][req_val]
 
-        # TODO(gongysh) support different vim for each vnf
-        vim_obj = self._get_vim_from_vnf(context,
-                                         list(vnffg_dict[
-                                                  'vnf_mapping'].values())[0])
-        driver_type = vim_obj['type']
+            param_values[vnfd_name]['substitution_mappings'][
+                'requirements'] = req_dict
+        ns['vnfd_details'] = vnfd_dict
+        # Step-3
+        kwargs = {'ns': ns, 'params': param_values}
+
+        # NOTE NoTasksException is raised if no tasks.
+        workflow = self._vim_drivers.invoke(
+            driver_type,
+            'prepare_and_create_workflow',
+            resource='vnf',
+            action='create',
+            auth_dict=self.get_auth_dict(context),
+            kwargs=kwargs)
         try:
-            fc_ids = []
+            mistral_execution = self._vim_drivers.invoke(
+                driver_type,
+                'execute_workflow',
+                workflow=workflow,
+                auth_dict=self.get_auth_dict(context))
+        except Exception as ex:
+            LOG.error('Error while executing workflow: %s', ex)
             self._vim_drivers.invoke(driver_type,
-                                     'remove_and_delete_flow_classifiers',
-                                     chain_id=sfc['instance_id'],
-                                     fc_ids=classifier_delete_ids,
-                                     auth_attr=vim_obj['auth_cred'])
-            for item in classifier_update:
-                fc_ids.append(self._vim_drivers.invoke(driver_type,
-                                                       'update_flow_classifier',
-                                                       chain_id=sfc['instance_id'],
-                                                       fc=item,
-                                                       auth_attr=vim_obj['auth_cred']))
-            n_sfc_chain_id = self._vim_drivers.invoke(
-                driver_type, 'update_chain',
-                vnfs=sfc['chain'], fc_ids=fc_ids,
-                chain_id=sfc['instance_id'], auth_attr=vim_obj['auth_cred'])
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                super(NfvoPlugin, self)._update_vnffg_status_post(context,
-                                                                  vnffg_dict,
-                                                                  error=True)
+                                     'delete_workflow',
+                                     workflow_id=workflow['id'],
+                                     auth_dict=self.get_auth_dict(context))
+            raise ex
+        ns_dict = super(NfvoPlugin, self)._update_ns_pre(context, ns_id)
 
-        classifiers_map = super(NfvoPlugin, self).create_classifiers_map(
-            classifier_ids, fc_ids)
-        super(NfvoPlugin, self)._update_vnffg_post(context, n_sfc_chain_id,
-                                                   classifiers_map,
-                                                   vnffg_dict)
-        super(NfvoPlugin, self)._update_vnffg_status_post(context, vnffg_dict)
-        return vnffg_dict
+        def _update_ns_wait(self_obj, ns_id, execution_id):
+            exec_state = "RUNNING"
+            mistral_retries = MISTRAL_RETRIES
+            while exec_state == "RUNNING" and mistral_retries > 0:
+                time.sleep(MISTRAL_RETRY_WAIT)
+                exec_state = self._vim_drivers.invoke(
+                    driver_type,
+                    'get_execution',
+                    execution_id=execution_id,
+                    auth_dict=self.get_auth_dict(context)).state
+                LOG.debug('status: %s', exec_state)
+                if exec_state == 'SUCCESS' or exec_state == 'ERROR':
+                    break
+                mistral_retries = mistral_retries - 1
+            error_reason = None
+            if mistral_retries == 0 and exec_state == 'RUNNING':
+                error_reason = _(
+                    "NS creation is not completed within"
+                    " {wait} seconds as creation of mistral"
+                    " execution {mistral} is not completed").format(
+                    wait=MISTRAL_RETRIES * MISTRAL_RETRY_WAIT,
+                    mistral=execution_id)
+            exec_obj = self._vim_drivers.invoke(
+                driver_type,
+                'get_execution',
+                execution_id=execution_id,
+                auth_dict=self.get_auth_dict(context))
+            self._vim_drivers.invoke(driver_type,
+                                     'delete_execution',
+                                     execution_id=execution_id,
+                                     auth_dict=self.get_auth_dict(context))
+            self._vim_drivers.invoke(driver_type,
+                                     'delete_workflow',
+                                     workflow_id=workflow['id'],
+                                     auth_dict=self.get_auth_dict(context))
+            super(NfvoPlugin, self).create_ns_post(context, ns_id, exec_obj,
+                                                   vnfd_dict, error_reason)
+
+        self.spawn_n(_update_ns_wait, self, ns_dict['id'],
+                     mistral_execution.id)
+        return ns_dict
