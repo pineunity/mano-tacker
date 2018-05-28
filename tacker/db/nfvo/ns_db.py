@@ -389,3 +389,10 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
                                     filters=filters, fields=fields)
 
     def update_ns_pre(self, context, ns, ns_id, ns_old):
+        # set pending_update status
+
+
+
+    def update_ns_post(self, context, ns):
+
+    def update_ns(self, context, ns_id, ns):
