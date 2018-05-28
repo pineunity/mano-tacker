@@ -388,10 +388,10 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
                                     self._make_ns_dict,
                                     filters=filters, fields=fields)
 
-    def update_ns_pre(self, context, ns, ns_id, ns_old):
-        # set pending_update status
-
-
+    def update_ns_pre(self, context, ns_id):
+        with context.session.begin(subtransactions=True):
+            ns_db = self._get_ns_db(ns_id, _ACTIVE_UPDATE, constants.PENDING_UPDATE)
+            return self._make_ns_dict(ns_db)
 
     def update_ns_post(self, context, ns):
 
