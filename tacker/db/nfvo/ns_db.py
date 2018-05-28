@@ -388,12 +388,12 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
                                     self._make_ns_dict,
                                     filters=filters, fields=fields)
 
-    def update_ns_pre(self, context, ns_id):
+    def _update_ns_pre(self, context, ns_id):
         with context.session.begin(subtransactions=True):
             ns_db = self._get_ns_db(ns_id, _ACTIVE_UPDATE, constants.PENDING_UPDATE)
             return self._make_ns_dict(ns_db)
 
-    def update_ns_post(self, context, ns_id, mistral_obj,
+    def _update_ns_post(self, context, ns_id, mistral_obj,
             vnfd_dict, error_reason):
         output = ast.literal_eval(mistral_obj.output)
         mgmt_urls = dict()
@@ -426,3 +426,5 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
         return ns_dict
 
     def update_ns(self, context, ns_id, ns):
+        ns_dict = self._update_ns_pre(context, ns_id)
+        self._update_ns_post(context, ns_id, constants.ACTIVE, ns_dict, None)
