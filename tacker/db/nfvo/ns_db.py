@@ -393,6 +393,41 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
             ns_db = self._get_ns_db(ns_id, _ACTIVE_UPDATE, constants.PENDING_UPDATE)
             return self._make_ns_dict(ns_db)
 
-    def update_ns_post(self, context, ns):
+    def update_ns_post(self, context, ns, mistral_obj,
+            vnfd_dict, error_reason):
+        output = ast.literal_eval(mistral_obj.output)
+        mgmt_urls = dict()
+        vnf_ids = dict()
+        if len(output) > 0:
+            for vnfd_name, vnfd_val in iteritems(vnfd_dict):
+                for instance in vnfd_val['instances']:
+                    if 'mgmt_url_' + instance in output:
+                        mgmt_urls[instance] = ast.literal_eval(
+                            output['mgmt_url_' + instance].strip())
+                        vnf_ids[instance] = output['vnf_id_' + instance]
+            vnf_ids = str(vnf_ids)
+            mgmt_urls = str(mgmt_urls)
+
+        if not vnf_ids:
+            vnf_ids = None
+        if not mgmt_urls:
+            mgmt_urls = None
+        status = constants.ACTIVE if mistral_obj.state == 'SUCCESS' \
+            else constants.ERROR
+        with context.session.begin(subtransactions=True):
+            ns_db = self._get_resource(context, NS,
+                                       ns_id)
+            ns_db.update({'vnf_ids': vnf_ids})
+            ns_db.update({'mgmt_urls': mgmt_urls})
+            ns_db.update({'status': status})
+            ns_db.update({'error_reason': error_reason})
+            ns_db.update({'updated_at': timeutils.utcnow()})
+            ns_dict = self._make_ns_dict(ns_db)
+            self._cos_db_plg.create_event(
+                context, res_id=ns_dict['id'],
+                res_type=constants.RES_TYPE_NS,
+                res_state=constants.RES_EVT_NA_STATE,
+                evt_type=constants.RES_EVT_UPDATE,
+                tstamp=ns_dict[constants.RES_EVT_UPDATED_FLD])
 
     def update_ns(self, context, ns_id, ns):
