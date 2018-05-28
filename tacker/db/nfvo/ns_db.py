@@ -393,7 +393,7 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
             ns_db = self._get_ns_db(ns_id, _ACTIVE_UPDATE, constants.PENDING_UPDATE)
             return self._make_ns_dict(ns_db)
 
-    def update_ns_post(self, context, ns, mistral_obj,
+    def update_ns_post(self, context, ns_id, mistral_obj,
             vnfd_dict, error_reason):
         output = ast.literal_eval(mistral_obj.output)
         mgmt_urls = dict()
@@ -423,11 +423,6 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
             ns_db.update({'error_reason': error_reason})
             ns_db.update({'updated_at': timeutils.utcnow()})
             ns_dict = self._make_ns_dict(ns_db)
-            self._cos_db_plg.create_event(
-                context, res_id=ns_dict['id'],
-                res_type=constants.RES_TYPE_NS,
-                res_state=constants.RES_EVT_NA_STATE,
-                evt_type=constants.RES_EVT_UPDATE,
-                tstamp=ns_dict[constants.RES_EVT_UPDATED_FLD])
+        return ns_dict
 
     def update_ns(self, context, ns_id, ns):
