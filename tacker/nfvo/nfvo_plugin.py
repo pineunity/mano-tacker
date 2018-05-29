@@ -1026,7 +1026,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
             error_reason = None
             if mistral_retries == 0 and exec_state == 'RUNNING':
                 error_reason = _(
-                    "NS creation is not completed within"
+                    "NS update is not completed within"
                     " {wait} seconds as creation of mistral"
                     " execution {mistral} is not completed").format(
                     wait=MISTRAL_RETRIES * MISTRAL_RETRY_WAIT,
@@ -1044,7 +1044,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
                                      'delete_workflow',
                                      workflow_id=workflow['id'],
                                      auth_dict=self.get_auth_dict(context))
-            super(NfvoPlugin, self).create_ns_post(context, ns_id, exec_obj,
+            super(NfvoPlugin, self)._update_ns_post(context, ns_id, exec_obj,
                                                    vnfd_dict, error_reason)
 
         self.spawn_n(_update_ns_wait, self, ns_dict['id'],
