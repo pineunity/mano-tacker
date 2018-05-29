@@ -396,27 +396,31 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
     def _update_ns_post(self, context, ns_id, mistral_obj,
             vnfd_dict, error_reason):
         output = ast.literal_eval(mistral_obj.output)
-        mgmt_urls = dict()
-        vnf_ids = dict()
+        new_mgmt_urls = dict()
+        new_vnf_ids = dict()
         if len(output) > 0:
             for vnfd_name, vnfd_val in iteritems(vnfd_dict):
                 for instance in vnfd_val['instances']:
                     if 'mgmt_url_' + instance in output:
-                        mgmt_urls[instance] = ast.literal_eval(
+                        new_mgmt_urls[instance] = ast.literal_eval(
                             output['mgmt_url_' + instance].strip())
-                        vnf_ids[instance] = output['vnf_id_' + instance]
-            vnf_ids = str(vnf_ids)
-            mgmt_urls = str(mgmt_urls)
+                        new_vnf_ids[instance] = output['vnf_id_' + instance]
 
-        if not vnf_ids:
+        if not new_vnf_ids:
             vnf_ids = None
-        if not mgmt_urls:
+        if not new_mgmt_urls:
             mgmt_urls = None
         status = constants.ACTIVE if mistral_obj.state == 'SUCCESS' \
             else constants.ERROR
         with context.session.begin(subtransactions=True):
             ns_db = self._get_resource(context, NS,
                                        ns_id)
+            mgmt_urls = ast.literal_eval(ns_db.mgmt_urls)
+            mgmt_urls.update(new_mgmt_urls)
+            mgmt_urls = str(mgmt_urls)
+            vnf_ids = ast.literal_eval(ns_db.vnf_ids)
+            vnf_ids.update(new_vnf_ids)
+            vnf_ids = str(vnf_ids)
             ns_db.update({'vnf_ids': vnf_ids})
             ns_db.update({'mgmt_urls': mgmt_urls})
             ns_db.update({'status': status})
