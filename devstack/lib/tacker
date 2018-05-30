@@ -46,7 +46,7 @@ GITREPO["tacker-horizon"]=${TACKERHORIZON_REPO:-${GIT_BASE}/openstack/tacker-hor
 GITBRANCH["tacker-horizon"]=${TACKERHORIZON_BRANCH:-master}
 GITDIR["tacker-horizon"]=$DEST/tacker-horizon
 
-GITREPO["python-tackerclient"]=${TACKERCLIENT_REPO:-${CUSTOM_BASE}//python-tackerclient.git}
+GITREPO["python-tackerclient"]=${TACKERCLIENT_REPO:-${CUSTOM_BASE}/python-tackerclient.git}
 GITBRANCH["python-tackerclient"]=${TACKERCLIENT_BRANCH:-master}
 GITDIR["python-tackerclient"]=$DEST/python-tackerclient
 
