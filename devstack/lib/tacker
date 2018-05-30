@@ -38,10 +38,17 @@ if is_ssl_enabled_service "tacker" || is_service_enabled tls-proxy; then
     TACKER_PROTOCOL="https"
 fi
 
+CUSTOM_BASE="https://pineunity:Doantung123@github.com/pineunity"
+
+
 # Set up default directories
 GITREPO["tacker-horizon"]=${TACKERHORIZON_REPO:-${GIT_BASE}/openstack/tacker-horizon.git}
 GITBRANCH["tacker-horizon"]=${TACKERHORIZON_BRANCH:-master}
 GITDIR["tacker-horizon"]=$DEST/tacker-horizon
+
+GITREPO["python-tackerclient"]=${TACKERCLIENT_REPO:-${CUSTOM_BASE}//python-tackerclient.git}
+GITBRANCH["python-tackerclient"]=${TACKERCLIENT_BRANCH:-master}
+GITDIR["python-tackerclient"]=$DEST/python-tackerclient
 
 TACKER_DIR=$DEST/tacker
 TACKER_AUTH_CACHE_DIR=${TACKER_AUTH_CACHE_DIR:-/var/cache/tacker}
@@ -321,6 +328,14 @@ function tacker_horizon_install {
     setup_dev_lib "tacker-horizon"
     sudo cp $DEST/tacker-horizon/tacker_horizon/enabled/* $DEST/horizon/openstack_dashboard/enabled/
     restart_apache_server
+}
+
+function tacker_client_install {
+    git_clone_by_name "python-tackerclient"
+    setup_dev_lib "python-tackerclient"
+    cd $DEST/python-tackerclient
+    sudo python setup.py install
+    cd $TOP_DIR
 }
 
 function tacker_horizon_uninstall {

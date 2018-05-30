@@ -33,6 +33,8 @@ if is_service_enabled tacker; then
         start_tacker
         echo_summary "Installing tacker horizon"
         tacker_horizon_install
+        echo_summary "Installing tacker client"
+        tacker_client_install
         if [[ "${TACKER_MODE}" == "all" ]]; then
             echo_summary "Modifying Heat policy.json file"
             modify_heat_flavor_policy_rule
