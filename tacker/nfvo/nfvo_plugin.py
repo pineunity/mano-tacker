@@ -1036,14 +1036,15 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
                 'get_execution',
                 execution_id=execution_id,
                 auth_dict=self.get_auth_dict(context))
-            self._vim_drivers.invoke(driver_type,
-                                     'delete_execution',
-                                     execution_id=execution_id,
-                                     auth_dict=self.get_auth_dict(context))
-            self._vim_drivers.invoke(driver_type,
-                                     'delete_workflow',
-                                     workflow_id=workflow['id'],
-                                     auth_dict=self.get_auth_dict(context))
+            # Currently, deletion not working
+            #self._vim_drivers.invoke(driver_type,
+            #                         'delete_execution',
+            #                         execution_id=execution_id,
+            #                         auth_dict=self.get_auth_dict(context))
+            #self._vim_drivers.invoke(driver_type,
+            #                         'delete_workflow',
+            #                         workflow_id=workflow['id'],
+            #                         auth_dict=self.get_auth_dict(context))
             super(NfvoPlugin, self)._update_ns_post(context, ns_id, exec_obj,
                                                    vnfd_dict, error_reason)
 
