@@ -918,7 +918,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
             ns_name = utils.generate_resource_name(name, 'inline')
             nsd = {'nsd': {'tenant_id': ns_old['tenant_id'],
                            'name': ns_name,
-                           'template': {
+                           'attributes': {
                                'nsd': ns_info['nsd_template']},
                            'template_source': 'inline',
                            'description': ns_old['description']}}
