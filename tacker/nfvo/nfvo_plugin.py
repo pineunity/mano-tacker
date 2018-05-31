@@ -935,7 +935,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
         onboarded_vnfds = vnfm_plugin.get_vnfds(context, [])
         region_name = ns.setdefault('placement_attr', {}).get(
             'region_name', None)
-        vim_res = self.vim_client.get_vim(context, ns['ns']['vim_id'],
+        vim_res = self.vim_client.get_vim(context, ns_old['vim_id'],
                                           region_name)
         driver_type = vim_res['vim_type']
         if not ns['ns']['vim_id']:
