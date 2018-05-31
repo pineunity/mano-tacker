@@ -431,7 +431,7 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
 
     def _update_ns_status(self, context, ns_id, new_status):
         with context.session.begin(subtransactions=True):
-            ns_db = self._get_ns_db(ns_id, _ACTIVE_UPDATE, new_status)
+            ns_db = self._get_ns_db(context, ns_id, _ACTIVE_UPDATE, new_status)
             return self._make_ns_dict(ns_db)
 
     def update_ns(self, context, ns_id, ns):
