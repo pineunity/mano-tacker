@@ -914,7 +914,7 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
         ns_old = super(NfvoPlugin, self).get_ns(context, ns_id)
         name = ns_old['name']
         # create inline vnffgd if given by user
-        if ns_info.get('ns_template'):
+        if ns_info.get('nsd_template'):
             ns_name = utils.generate_resource_name(name, 'inline')
             nsd = {'nsd': {'tenant_id': ns_old['tenant_id'],
                            'name': ns_name,
