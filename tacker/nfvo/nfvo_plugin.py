@@ -938,11 +938,11 @@ class NfvoPlugin(nfvo_db_plugin.NfvoPluginDb, vnffg_db.VnffgPluginDbMixin,
         vim_res = self.vim_client.get_vim(context, ns_old['vim_id'],
                                           region_name)
         driver_type = vim_res['vim_type']
-        if not ns['ns']['vim_id']:
-            ns['ns']['vim_id'] = vim_res['vim_id']
+        # if not ns['ns']['vim_id']:
+        #    ns['ns']['vim_id'] = vim_res['vim_id']
 
         # Step-1
-        param_values = ns['ns']['attributes'].get('param_values', {})
+        param_values = dict()
         if 'get_input' in str(nsd_dict):
             self._process_parameterized_input(ns['ns']['attributes'],
                                               nsd_dict)
