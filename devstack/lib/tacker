@@ -38,8 +38,8 @@ if is_ssl_enabled_service "tacker" || is_service_enabled tls-proxy; then
     TACKER_PROTOCOL="https"
 fi
 
-CUSTOM_BASE="https://pineunity:Doantung123@github.com/pineunity"
-
+CUSTOM_BASE="https://github.com/pineunity"
+EXTRA_CUSTOM_BASE="git+https://github.com/pineunity"
 
 # Set up default directories
 GITREPO["tacker-horizon"]=${TACKERHORIZON_REPO:-${GIT_BASE}/openstack/tacker-horizon.git}
