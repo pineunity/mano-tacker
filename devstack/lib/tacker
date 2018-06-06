@@ -42,7 +42,7 @@ CUSTOM_BASE="https://github.com/pineunity"
 EXTRA_CUSTOM_BASE="git+https://github.com/pineunity"
 
 # Set up default directories
-GITREPO["tacker-horizon"]=${TACKERHORIZON_REPO:-${GIT_BASE}/openstack/tacker-horizon.git}
+GITREPO["tacker-horizon"]=${TACKERHORIZON_REPO:-${CUSTOM_BASE}/tacker-horizon.git}
 GITBRANCH["tacker-horizon"]=${TACKERHORIZON_BRANCH:-master}
 GITDIR["tacker-horizon"]=$DEST/tacker-horizon
 
