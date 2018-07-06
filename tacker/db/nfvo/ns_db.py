@@ -424,6 +424,11 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
             mgmt_urls.update(new_mgmt_urls)
             mgmt_urls = str(mgmt_urls)
             vnf_ids = ast.literal_eval(ns_db.vnf_ids)
+            for vnf_name, vnf_id_list in vnf_ids.items():
+                for new_vnf_name, new_vnf_id_list in new_vnf_ids.items():
+                    if new_vnf_name == vnf_name:
+                        extra_id = new_vnf_ids.pop(new_vnf_name)
+                        vnf_ids[vnf_name].extend(extra_id)
             vnf_ids.update(new_vnf_ids)
             vnf_ids = str(vnf_ids)
             ns_db.update({'vnf_ids': vnf_ids})
