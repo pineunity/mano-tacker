@@ -416,6 +416,11 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
             ns_db = self._get_resource(context, NS,
                                        ns_id)
             mgmt_urls = ast.literal_eval(ns_db.mgmt_urls)
+            for vnf_name, mgmt_dict in mgmt_urls.items():
+                for new_vnf_name, new_mgmt_dict in new_mgmt_urls.items():
+                    if new_vnf_name == vnf_name:
+                        extra_mgmt = new_mgmt_urls.pop(new_vnf_name)
+                        mgmt_urls[vnf_name].extend(extra_mgmt)
             mgmt_urls.update(new_mgmt_urls)
             mgmt_urls = str(mgmt_urls)
             vnf_ids = ast.literal_eval(ns_db.vnf_ids)
