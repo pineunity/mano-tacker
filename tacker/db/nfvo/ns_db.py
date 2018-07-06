@@ -300,8 +300,8 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
             for vnfd_name, vnfd_val in iteritems(vnfd_dict):
                 for instance in vnfd_val['instances']:
                     if 'mgmt_url_' + instance in output:
-                        mgmt_urls[instance] = ast.literal_eval(
-                            output['mgmt_url_' + instance].strip())
+                        mgmt_url_dict = ast.literal_eval(output['mgmt_url_' + instance].strip())
+                        mgmt_urls[instance] = mgmt_url_dict.values()
                         vnf_ids[instance] = output['vnf_id_' + instance]
             vnf_ids = str(vnf_ids)
             mgmt_urls = str(mgmt_urls)
@@ -402,14 +402,14 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
             for vnfd_name, vnfd_val in iteritems(vnfd_dict):
                 for instance in vnfd_val['instances']:
                     if 'mgmt_url_' + instance in output:
-                        new_mgmt_urls[instance] = ast.literal_eval(
-                            output['mgmt_url_' + instance].strip())
+                        mgmt_url_dict = ast.literal_eval(output['mgmt_url_' + instance].strip())
+                        new_mgmt_urls[instance] = mgmt_url_dict.values()
                         new_vnf_ids[instance] = output['vnf_id_' + instance]
 
         if not new_vnf_ids:
-            vnf_ids = None
+            new_vnf_ids = None
         if not new_mgmt_urls:
-            mgmt_urls = None
+            new_mgmt_urls = None
         status = constants.ACTIVE if mistral_obj.state == 'SUCCESS' \
             else constants.ERROR
         with context.session.begin(subtransactions=True):
