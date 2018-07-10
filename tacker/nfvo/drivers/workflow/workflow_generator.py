@@ -149,9 +149,16 @@ class WorkflowGenerator(workflow_generator.WorkflowGeneratorBase):
         self.definition[self.wf_identifier]['input'] = []
         for vnf in vnf_ids.keys():
             vnf_key = 'vnf_id_' + vnf
-            self.definition[self.wf_identifier]['input'].append(vnf_key)
-            self.input_dict[vnf_key] = vnf_ids[vnf]
-            ns_dict['vnfd_details'][vnf] = {'instances': [vnf]}
+            ns_dict['vnfd_details'][vnf] = dict()
+            instances_dict = dict()
+            instances_dict['instances'] = list()
+            for index, vnf_id in enumerate(vnf_ids[vnf]):
+                vnf_key_cp = vnf_key + str(index)
+                self.definition[self.wf_identifier]['input'].append(vnf_key_cp)
+                vnf_name = vnf + str(index)
+                self.input_dict[vnf_key_cp] = vnf_id
+                instances_dict['instances'].append(vnf_name)
+            ns_dict['vnfd_details'][vnf].update(instances_dict)
         self.definition[self.wf_identifier]['tasks'] = dict()
         self.definition[self.wf_identifier]['tasks'].update(
             self._add_delete_vnf_tasks(ns_dict))

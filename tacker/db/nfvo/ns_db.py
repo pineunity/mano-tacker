@@ -302,7 +302,8 @@ class NSPluginDb(network_service.NSPluginBase, db_base.CommonDbMixin):
                     if 'mgmt_url_' + instance in output:
                         mgmt_url_dict = ast.literal_eval(output['mgmt_url_' + instance].strip())
                         mgmt_urls[instance] = mgmt_url_dict.values()
-                        vnf_ids[instance] = output['vnf_id_' + instance]
+                        vnf_ids[instance] = list()
+                        vnf_ids[instance].append(output['vnf_id_' + instance])
             vnf_ids = str(vnf_ids)
             mgmt_urls = str(mgmt_urls)
 
